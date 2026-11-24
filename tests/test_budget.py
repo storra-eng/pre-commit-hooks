@@ -51,13 +51,19 @@ class Unit(unittest.TestCase):
 
     def test_repo_exemptions_glob_and_regex(self):
         with tempfile.TemporaryDirectory() as d:
-            with open(os.path.join(d, ".token-budget-exempt"), "w") as f:
-                f.write("# why\ndocs/legal/*.md  # wide table\nre:^encore/[^/]+\\.ts$  # mirrors\n\n")
-            extra = ftb.repo_exemptions(d)
+            extra = ftb.repo_exemptions(
+                "# why\ndocs/legal/*.md  # wide table\n  re:^encore/[^/]+\\.ts$  # mirrors\nre:^a/ #\n\n")
         self.assertTrue(ftb.is_exempt("docs/legal/x.md", extra))
         self.assertTrue(ftb.is_exempt("encore/a.ts", extra))
         self.assertFalse(ftb.is_exempt("encore/sub/a.ts", extra), "regex stays single-level")
         self.assertFalse(ftb.is_exempt("docs/other.md", extra))
+        self.assertFalse(ftb.is_exempt("docs/Legal/x.md", extra), "globs are case-sensitive")
+        self.assertTrue(ftb.is_exempt("a/b", extra), "a trailing bare # is a comment (after whitespace)")
+
+    def test_invalid_regex_names_the_line(self):
+        with self.assertRaises(SystemExit) as c:
+            ftb.repo_exemptions("ok/*\nre:([\n")
+        self.assertIn(":2:", str(c.exception))
 
     def test_advice(self):
         msg = ftb.split_advice("src/Big.tsx", 60000)
@@ -66,6 +72,10 @@ class Unit(unittest.TestCase):
 
 
 class EndToEnd(unittest.TestCase):
+    ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    ENV["GIT_CONFIG_GLOBAL"] = os.devnull
+    ENV["GIT_CONFIG_NOSYSTEM"] = "1"
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.d = self.tmp.name
@@ -78,17 +88,17 @@ class EndToEnd(unittest.TestCase):
         self.tmp.cleanup()
 
     def git(self, *a):
-        return subprocess.run(["git", *a], cwd=self.d, capture_output=True, text=True, check=True)
+        return subprocess.run(["git", *a], cwd=self.d, capture_output=True, text=True, check=True, env=self.ENV)
 
-    def write(self, name, n):
+    def write(self, name, n, ch="x"):
         p = os.path.join(self.d, name)
         os.makedirs(os.path.dirname(p), exist_ok=True)
         with open(p, "w") as f:
-            f.write("x" * n)
+            f.write(ch * n)
         self.git("add", name)
 
     def run_hook(self):
-        return subprocess.run(HOOK, cwd=self.d, capture_output=True, text=True).returncode
+        return subprocess.run(HOOK, cwd=self.d, capture_output=True, text=True, env=self.ENV).returncode
 
     def test_blocks_new_big_file_and_allows_small(self):
         self.write("a.md", 30000)
@@ -100,8 +110,15 @@ class EndToEnd(unittest.TestCase):
     def test_ratchet_and_rename(self):
         self.write("a.md", BIG)
         self.git("commit", "-qm", "legacy")
-        self.write("a.md", BIG)  # unchanged-size edit
+        self.write("a.md", BIG, "y")  # same-size edit
+        self.assertEqual(self.git("diff", "--cached", "--name-only").stdout.strip(), "a.md", "edit is staged")
         self.assertEqual(self.run_hook(), 0)
+        self.write("a.md", BIG - 10, "z")
+        self.assertEqual(self.run_hook(), 0, "shrinking a legacy file passes")
+        self.write("a.md", BIG + 10)
+        self.assertEqual(self.run_hook(), 1, "growing a legacy file is blocked")
+        self.write("a.md", BIG)
+        self.git("reset", "-q", "--hard")
         self.git("mv", "a.md", "b.md")
         self.assertEqual(self.run_hook(), 0, "plain rename keeps its place in the ratchet")
         self.write("b.md", BIG + 5)
@@ -110,9 +127,9 @@ class EndToEnd(unittest.TestCase):
     def test_exempt_file(self):
         self.write("gen/a.md", 30000)
         self.assertEqual(self.run_hook(), 1)
-        self.write(".token-budget-exempt", 0)
         with open(os.path.join(self.d, ".token-budget-exempt"), "w") as f:
             f.write("gen/*  # generated\n")
+        self.assertEqual(self.run_hook(), 1, "an unstaged exemption file does not count")
         self.git("add", ".token-budget-exempt")
         self.assertEqual(self.run_hook(), 0)
 
@@ -125,7 +142,7 @@ class EndToEnd(unittest.TestCase):
         self.git("checkout", "-q", "main")
         self.write("m.txt", 1)
         self.git("commit", "-qm", "diverge")
-        subprocess.run(["git", "merge", "--no-commit", "--no-ff", "other"], cwd=self.d, capture_output=True)
+        subprocess.run(["git", "merge", "--no-commit", "--no-ff", "other"], cwd=self.d, capture_output=True, env=self.ENV)
         self.assertTrue(os.path.exists(os.path.join(self.d, ".git", "MERGE_HEAD")))
         self.assertEqual(self.run_hook(), 0)
 

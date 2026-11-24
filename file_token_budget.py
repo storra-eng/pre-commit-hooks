@@ -8,7 +8,7 @@ it bigger, so editing a legacy file never becomes an unpassable gate. New files 
 are always blocked.
 
 A rename counts as the file it came from (`git diff -M`), so moving an over-limit file keeps its
-place in the ratchet instead of reading as new.
+place in the ratchet instead of reading as new. A copy counts as a new file.
 
 Merge commits: a path whose staged blob is byte-identical to MERGE_HEAD's is already on the branch
 being merged in, so this commit adds nothing new to it and it is skipped. A path that differs from
@@ -21,7 +21,7 @@ per line, each with a reason in the comment (`#` starts a comment):
   - `re:^a/[^/]+\\.ts$`   a regular expression searched in the path, when a glob is too broad
 There is deliberately no per-commit escape hatch.
 
-Stdlib-only, reads staged blobs (never the working tree).
+Stdlib-only, reads staged blobs and the staged exemption file (never the working tree).
 """
 import fnmatch
 import os
@@ -51,22 +51,30 @@ EXEMPT = [re.compile(p) for p in (
 )]
 
 
-def repo_exemptions(root="."):
-    """Parse EXEMPT_FILE into a list of (kind, pattern) where kind is 'glob' or 're'."""
-    try:
-        with open(os.path.join(root, EXEMPT_FILE), encoding="utf-8") as f:
-            lines = [l.split("#", 1)[0].strip() if not l.startswith("re:") else l.rstrip("\n") for l in f]
-    except OSError:
-        return []
+def repo_exemptions(text=None):
+    """Parse the exemption file into (kind, pattern) pairs, kind 'glob' or 're'.
+
+    Read from the index (never the working tree), so an unstaged edit cannot exempt a file for one commit.
+    """
+    if text is None:
+        p = _git(["show", f":{EXEMPT_FILE}"], text=True)
+        if p.returncode != 0:
+            return []
+        text = p.stdout
     out = []
-    for line in lines:
-        if not line:
-            continue
+    for n, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
         if line.startswith("re:"):
-            # A regex may contain '#', so it is taken whole; strip a trailing ' # reason' only.
-            out.append(("re", re.compile(re.split(r"\s+#\s", line[3:], maxsplit=1)[0].strip())))
+            # A regex may contain '#', so only a trailing ' # reason' is stripped.
+            pat = re.split(r"\s+#(?:\s|$)", line[3:], maxsplit=1)[0].strip()
+            try:
+                out.append(("re", re.compile(pat)))
+            except re.error as e:
+                sys.exit(f"{EXEMPT_FILE}:{n}: invalid regex {pat!r}: {e}")
         else:
-            out.append(("glob", line))
+            line = line.split("#", 1)[0].strip()
+            if line:
+                out.append(("glob", line))
     return out
 
 
@@ -76,7 +84,7 @@ def is_exempt(path, extra=()):
     for kind, pat in extra:
         if kind == "re" and pat.search(path):
             return True
-        if kind == "glob" and fnmatch.fnmatch(path, pat):
+        if kind == "glob" and fnmatch.fnmatchcase(path, pat):
             return True
     return False
 
@@ -132,16 +140,15 @@ def find_offenders(paths, size=blob_size, binary=is_binary, same_as_merge=lambda
 
 
 def staged_paths():
-    """Staged paths (added, copied, modified, renamed) and a map of renamed path -> original."""
+    """Staged paths (added, modified, renamed; a copy counts as a new file) and a map of renamed path -> original."""
     raw = _git(["-c", "core.quotePath=false", "diff", "--cached", "-M", "-l0", "--name-status", "-z",
-                "--diff-filter=ACMR"], text=True, check=True).stdout.split("\0")
+                "--diff-filter=AMR"], text=True, check=True).stdout.split("\0")
     entries = [e for e in raw if e]
     staged, moved, i = [], {}, 0
     while i < len(entries):
-        if entries[i][0] in "RC":
+        if entries[i][0] == "R":
             staged.append(entries[i + 2])
-            if entries[i][0] == "R":
-                moved[entries[i + 2]] = entries[i + 1]
+            moved[entries[i + 2]] = entries[i + 1]
             i += 3
         else:
             staged.append(entries[i + 1])
@@ -156,7 +163,6 @@ def rev_parse(spec):
 
 def main():
     staged, moved = staged_paths()
-    top = _git(["rev-parse", "--show-toplevel"], text=True, check=True).stdout.strip()
     merge_head = rev_parse("MERGE_HEAD")
 
     def same_as_merge(path):
@@ -166,7 +172,7 @@ def main():
         return s is not None and s == rev_parse(f"{merge_head}:{path}")
 
     offenders = find_offenders(staged, same_as_merge=same_as_merge, renamed_from=moved.get,
-                               extra=repo_exemptions(top))
+                               extra=repo_exemptions())
     if offenders:
         print("\n\n".join(split_advice(p, n) for p, n in offenders), file=sys.stderr)
         sys.exit(1)

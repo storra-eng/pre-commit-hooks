@@ -17,7 +17,7 @@ Pre-commit hook. Blocks a new file, or a change that grows one, past 5,000 token
 ```yaml
 repos:
   - repo: https://github.com/storra-eng/file-token-budget
-    rev: v1.0.0
+    rev: v1.0.1
     hooks:
       - id: file-token-budget
 ```
@@ -26,7 +26,7 @@ Husky repos: `pre-commit run file-token-budget --hook-stage pre-commit` from the
 
 ## `.token-budget-exempt`
 
-One entry per line, each with a `# reason`.
+One entry per line, each with a `# reason`. Read from the index, so stage the file.
 
 ```
 docs/legal/*.md                   # fnmatch glob; * also matches /
