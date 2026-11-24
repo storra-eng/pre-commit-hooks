@@ -5,10 +5,10 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-import file_token_budget as ftb  # noqa: E402
+from storra_pre_commit_hooks import file_token_budget as ftb  # noqa: E402
 
 BIG = ftb.MAX_BYTES + 1000
-HOOK = [sys.executable, os.path.join(os.path.dirname(__file__), "..", "file_token_budget.py")]
+HOOK = [sys.executable, os.path.join(os.path.dirname(__file__), "..", "storra_pre_commit_hooks", "file_token_budget.py")]
 
 
 def fake(staged, head=None, binary=()):
