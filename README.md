@@ -6,6 +6,8 @@ Storra's [pre-commit](https://pre-commit.com) hooks, one module per hook in `sto
 |---|---|
 | `file-token-budget` | Blocks a new file, or a change that grows one, past 5,000 tokens (bytes / 4 = 20,000 bytes) |
 
+Contributing: see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Use
 
 ```yaml

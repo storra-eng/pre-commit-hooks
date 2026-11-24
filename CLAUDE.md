@@ -4,7 +4,43 @@ Storra's shared pre-commit hooks, one module per hook in `storra_pre_commit_hook
 `pre-commit/pre-commit-hooks`). Started with `file-token-budget` (STO-1145), which replaced the per-repo
 `scripts/check-file-token-budget.{py,mjs}` copies.
 
-## Rules
+## Agent instructions
+
+`CLAUDE.md` is this repository's canonical agent-instructions file. `AGENTS.md`
+must remain a symlink to it, never a second copy. Read the repository's relevant
+rules and skills before changing code or configuration.
+
+## Working conventions
+
+- Use a git worktree and branch for each piece of work. The primary
+  checkout is reference-only. See `.claude/rules/git.md` for worktree conventions.
+- Keep changes tightly scoped. Preserve unrelated work in a dirty tree and never
+  discard it without explicit approval.
+- Run the relevant automated checks. For meaningful changes, run the complete
+  project test suite and review the diff before landing it.
+- Keep documentation true to the implementation. Put detailed operating
+  procedures in repository documentation rather than duplicating them here.
+- When a repository's documentation and its existing code disagree, follow the conventions in the existing code for the task in hand, then sort each inconsistency out rather than only reporting it (Ed, 30 Oct 2026). For each one, ask Ed how to proceed - one AskUserQuestion question per inconsistency, naming the doc and the code that disagree, with the options (fix the doc to match the code, change the code to match the doc, or leave it) and your recommendation first - then carry out the answer in the same session. Fix one yourself without asking only when the doc is plainly stale (it names a file, flag or value the code has since replaced) and the fix is to the doc alone. In your final reply, list each inconsistency and what was done about it.
+
+## Shared Claude plugins
+
+This repository registers the internal `storra` marketplace from
+[`storra-eng/claude-plugins`](https://github.com/storra-eng/claude-plugins).
+The checked-in configuration enables the cross-repository `dev-loop`,
+`code-standards`, `agent-ops`, `integrations`, and `herdr` plugins. Add
+`database@storra` only when this repository uses a database.
+
+Marketplace updates follow commits to the shared repository. A machine needs
+non-interactive GitHub authentication for automatic updates; use
+`/plugin marketplace update storra` to refresh immediately.
+
+## Landing work
+
+Work in a `git gtr` worktree and land it straight on the default branch: rebase onto `origin/<default>`, run the local
+checks and `/code-review`, then fast-forward push. **No pull request** (Ed, 16 Nov 2026). Dependabot and other bot PRs
+still arrive as PRs. Never commit in the main checkout, never force-push the default branch, never `--no-verify`.
+
+## Hook rules
 
 - Stdlib-only Python, one module per hook; no dependencies. Keep the repo free of Storra-specific values: it is meant to be
   consumable by public repos.
@@ -14,11 +50,3 @@ Storra's shared pre-commit hooks, one module per hook in `storra_pre_commit_hook
 - Generic exemptions only. A path specific to one repo goes in that repo's `.token-budget-exempt`.
 - Consumers: cyrus, hive, skills, claude-plugins, agent-automation, canos, repo-template (pre-commit); storra (husky
   runs `pre-commit run file-token-budget`).
-
-## Landing
-
-Work in a `git gtr` worktree and push straight to `main`; no PR. Never `--no-verify`.
-
-## Agent instructions
-
-`AGENTS.md` is a symlink to this file.
