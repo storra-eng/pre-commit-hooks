@@ -1,0 +1,7 @@
+- id: file-token-budget
+  name: block files over 5,000 tokens
+  description: Blocks a new file, or a change that grows one, past 5,000 tokens (bytes / 4).
+  entry: file-token-budget
+  language: python
+  always_run: true
+  pass_filenames: false

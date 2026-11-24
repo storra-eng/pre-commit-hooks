@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "file-token-budget"
+version = "1.0.0"
+description = "Pre-commit hook: block new or growing files over 5,000 tokens (bytes / 4)"
+requires-python = ">=3.8"
+
+[project.scripts]
+file-token-budget = "file_token_budget:main"
+
+[tool.setuptools]
+py-modules = ["file_token_budget"]
