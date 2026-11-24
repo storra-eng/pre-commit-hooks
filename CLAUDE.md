@@ -48,5 +48,5 @@ still arrive as PRs. Never commit in the main checkout, never force-push the def
 - Release: land on `main`, tag `vX.Y.Z` (semver; a new generic exemption is minor, a changed rule is major).
   Then bump `rev:` in each consumer's `.pre-commit-config.yaml`.
 - Generic exemptions only. A path specific to one repo goes in that repo's `.token-budget-exempt`.
-- Consumers: cyrus, hive, skills, claude-plugins, agent-automation, canos, repo-template (pre-commit); storra (husky
+- Consumers: cyrus, hive, skills, claude-plugins, agent-automation, canos, repo-template, storra-mcp (pre-commit); storra (husky
   runs `pre-commit run file-token-budget`).
